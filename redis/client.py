@@ -1,5 +1,6 @@
 import copy
 import datetime
+import logging
 import re
 import threading
 import time
@@ -1276,6 +1277,7 @@ class PubSub:
         ignore_subscribe_messages=False,
         encoder=None,
     ):
+        logging.debug(f'redis-py PubSub.__init__ self:{id(self)}')
         self.connection_pool = connection_pool
         self.shard_hint = shard_hint
         self.ignore_subscribe_messages = ignore_subscribe_messages
@@ -1301,12 +1303,14 @@ class PubSub:
         self.reset()
 
     def __del__(self):
+        logging.debug(f'redis-py PubSub.__del__ self:{id(self)}')
         try:
             # if this object went out of scope prior to shutting down
             # subscriptions, close the connection manually before
             # returning it to the connection pool
             self.reset()
         except Exception:
+            logging.debug('redis-py PubSub.__del__ exception')
             pass
 
     def reset(self):

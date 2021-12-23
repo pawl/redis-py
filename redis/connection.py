@@ -1,6 +1,7 @@
 import copy
 import errno
 import io
+import logging
 import os
 import socket
 import threading
@@ -163,7 +164,6 @@ class BaseParser:
             return exception_class(response)
         return ResponseError(response)
 
-
 import linecache
 import os
 import tracemalloc
@@ -192,6 +192,9 @@ def display_top(snapshot, key_type='lineno', limit=10):
     print("Total allocated size: %.1f KiB" % (total / 1024))
 
 tracemalloc.start()
+
+#from pympler import tracker
+#tr = tracker.SummaryTracker()
 
 
 class SocketBuffer:
@@ -226,6 +229,7 @@ class SocketBuffer:
                 if isinstance(data, bytes) and len(data) == 0:
                     snapshot = tracemalloc.take_snapshot()
                     display_top(snapshot)
+                    #tr.print_diff()
                     raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
                 buf.write(data)
                 data_length = len(data)
@@ -300,10 +304,12 @@ class SocketBuffer:
         self.bytes_read = 0
 
     def close(self):
+        logging.debug('redis-py SocketBuffer.close')
         try:
             self.purge()
             self._buffer.close()
         except Exception:
+            logging.debug('redis-py SocketBuffer.close Exception')
             # issue #633 suggests the purge/close somehow raised a
             # BadFileDescriptor error. Perhaps the client ran out of
             # memory or something else? It's probably OK to ignore
@@ -339,6 +345,7 @@ class PythonParser(BaseParser):
 
     def on_disconnect(self):
         "Called when the socket disconnects"
+        logging.debug(f'redis-py PythonParser.on_disconnect self:{id(self)} _sock:{bool(self._sock)} _buffer:{bool(self._buffer)}')
         self._sock = None
         if self._buffer is not None:
             self._buffer.close()
@@ -561,6 +568,7 @@ class Connection:
         To specify a retry policy, first set `retry_on_timeout` to `True`
         then set `retry` to a valid `Retry` object
         """
+        logging.debug(f'redis-py Connection.__init__ self:{id(self)}')
         self.pid = os.getpid()
         self.host = host
         self.port = int(port)
@@ -603,9 +611,11 @@ class Connection:
         return pieces
 
     def __del__(self):
+        logging.debug(f'redis-py Connection.__del__ self:{id(self)}')
         try:
             self.disconnect()
         except Exception:
+            logging.exception(f'redis-py Connection.__del__ self:{id(self)}')
             pass
 
     def register_connect_callback(self, callback):
@@ -624,6 +634,7 @@ class Connection:
 
     def connect(self):
         "Connects to the Redis server if not already connected"
+        #logging.debug(f'redis-py Connection.connect _sock:{self._sock}')
         if self._sock:
             return
         try:
@@ -658,6 +669,7 @@ class Connection:
         # we want to mimic what socket.create_connection does to support
         # ipv4/ipv6, but we want to set options prior to calling
         # socket.connect()
+        logging.debug(f'redis-py Connection._connect self:{id(self)}')
         err = None
         for res in socket.getaddrinfo(
             self.host, self.port, self.socket_type, socket.SOCK_STREAM
@@ -686,6 +698,7 @@ class Connection:
                 return sock
 
             except OSError as _:
+                logging.debug(f'redis-py Connection._connect OSError sock:{bool(sock)}')
                 err = _
                 if sock is not None:
                     sock.close()
@@ -746,6 +759,7 @@ class Connection:
 
     def disconnect(self):
         "Disconnects from the Redis server"
+        logging.debug(f'redis-py Connection.disconnect self:{id(self)} _sock:{bool(self._sock)}')
         self._parser.on_disconnect()
         if self._sock is None:
             return
@@ -759,6 +773,7 @@ class Connection:
         try:
             self._sock.close()
         except OSError:
+            logging.debug('redis-py Connection.disconnect close OSError')
             pass
         self._sock = None
 
@@ -825,6 +840,7 @@ class Connection:
             self.disconnect()
             raise TimeoutError(f"Timeout reading from {self.host}:{self.port}")
         except OSError as e:
+            logging.debug('redis-py Connection.read_response OSError')
             self.disconnect()
             raise ConnectionError(
                 f"Error while reading from {self.host}:{self.port}" f" : {e.args}"
